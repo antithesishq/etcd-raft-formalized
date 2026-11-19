@@ -1,0 +1,108 @@
+# Three raft nodes and the driver; raft1 builds the server image, raft2 and
+# raft3 reuse it. Container names are prefixed "etcd-raft"; service names,
+# host names and node IDs (raft1..raft3, as in the model) are not.
+x-raft: &raft
+  platform: linux/amd64
+  image: etcd-raft:latest
+
+x-raft-env: &raft-env
+  # A node's raft id is its place in this list.
+  PEERS: raft1=raft1:7000,raft2=raft2:7000,raft3=raft3:7000
+  LOG_FORWARD_SOCKET: /logs/driver.sock
+  # Server log lines to forward (comma-separated substrings).
+  LOG_FORWARD_MATCH: "msg=raft-"
+  # Step reports, synchronous (tracekit.Sink, rawnode/node.go).
+  TRACEKIT_SOCKET: /logs/kit.sock
+  # Run variant (written to .env by scripts/launch.sh; see its usage).
+  PREVOTE: ${PREVOTE:-0}
+  CHECK_QUORUM: ${CHECK_QUORUM:-0}
+  BOOT_ENTRY: ${BOOT_ENTRY:-1}
+  # ASYNC: AsyncStorageWrites, vote requests held until written;
+  # NO_HOLD_VOTE: no hold (unsafe without patches/E1); PARALLEL: leader
+  # sends before it writes.
+  ASYNC: ${ASYNC:-0}
+  NO_HOLD_VOTE: ${NO_HOLD_VOTE:-0}
+  PARALLEL: ${PARALLEL:-0}
+  # Linearizable reads via ReadIndex instead of a log entry.
+  READ_INDEX: ${READ_INDEX:-0}
+  # Snapshot every N applied entries (0: never).
+  SNAPSHOT_EVERY: ${SNAPSHOT_EVERY:-0}
+  # FORWARD: followers pass proposals to the leader. MAX_INFLIGHT: raft's
+  # MaxInflightMsgs (0: 256). SNAP_STATUS: raft told of each snapshot's fate.
+  # BATCH: one Ready per up to BATCH inputs (0: per input), waiting BATCH_WAIT.
+  FORWARD: ${FORWARD:-0}
+  MAX_INFLIGHT: ${MAX_INFLIGHT:-0}
+  SNAP_STATUS: ${SNAP_STATUS:-0}
+  BATCH: ${BATCH:-0}
+  BATCH_WAIT: ${BATCH_WAIT:-0s}
+  # VOTERS: initial voters (empty: all). STEP_DOWN: a leader that applies
+  # its own removal stops leading. Changes: DRIVER_CONF_RATE below.
+  VOTERS: ${VOTERS:-}
+  STEP_DOWN: ${STEP_DOWN:-0}
+
+services:
+  raft1:
+    <<: *raft
+    build:
+      context: ../..
+      dockerfile: antithesis-fm/server/Dockerfile
+    container_name: etcd-raft1
+    hostname: raft1
+    environment:
+      <<: *raft-env
+      NODE_ID: raft1
+    volumes: [logs:/logs, raft1-data:/data]
+
+  raft2:
+    <<: *raft
+    container_name: etcd-raft2
+    hostname: raft2
+    environment:
+      <<: *raft-env
+      NODE_ID: raft2
+    volumes: [logs:/logs, raft2-data:/data]
+
+  raft3:
+    <<: *raft
+    container_name: etcd-raft3
+    hostname: raft3
+    environment:
+      <<: *raft-env
+      NODE_ID: raft3
+    volumes: [logs:/logs, raft3-data:/data]
+
+  driver:
+    container_name: etcd-raft-driver
+    hostname: driver
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: antithesis-fm/driver/Dockerfile
+    image: etcd-raft-driver:latest
+    environment:
+      NODE_URLS: http://raft1:8000,http://raft2:8000,http://raft3:8000
+      TRACEKIT_SOCKET: /logs/kit.sock
+      TRACEKIT_DIR: /trace-kit
+      # With ASYNC or BATCH a node's in-memory term can be lost.
+      ASYNC: ${ASYNC:-0}
+      BATCH: ${BATCH:-0}
+      # FORWARD: writes to followers expected to succeed. Leadership transfers per second.
+      FORWARD: ${FORWARD:-0}
+      DRIVER_TRANSFER_RATE: ${TRANSFER_RATE:-0}
+      # Membership changes per second.
+      DRIVER_CONF_RATE: ${CONF_RATE:-0}
+      TRACEKIT_MANIFEST: /opt/kit/spec/manifest${MANIFEST_SUFFIX:-}.json
+      # Also print the stream, so it can be recovered and rechecked offline;
+      # scripts/launch.sh filters these lines during fuzzing.
+      DRIVER_PRINT_TRACE: "1"
+    # Default Unix datagram queue is 10.
+    sysctls:
+      net.unix.max_dgram_qlen: "4096"
+    volumes: [logs:/logs, trace-kit:/trace-kit]
+
+volumes:
+  logs:
+  trace-kit:
+  raft1-data:
+  raft2-data:
+  raft3-data:

@@ -1,3 +1,7 @@
+> [!TIP]
+> This document is the README for the top-level etcd-raft repository. For the formalization
+> produced by Antithesis, see [`antithesis-fm/README.md`](antithesis-fm/README.md).
+
 # Raft library
 
 Raft is a protocol with which a cluster of nodes can maintain a replicated state machine.

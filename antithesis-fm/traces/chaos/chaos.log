@@ -1,0 +1,8 @@
+chaos: short pause raft3
+chaos: pause raft1
+chaos: pause raft1
+chaos: short pause raft2
+chaos: pause raft2
+chaos: kill all
+chaos: short pause raft3
+chaos: kill raft3

@@ -1,0 +1,6 @@
+runs/
+**/target/
+stream/classes/
+Act_*.lean
+One_*.lean
+Count*.lean

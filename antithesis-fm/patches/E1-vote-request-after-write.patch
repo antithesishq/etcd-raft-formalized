@@ -1,0 +1,17 @@
+--- a/raft.go
++++ b/raft.go
+@@ -543,7 +543,13 @@
+ 			m.Term = new(r.Term)
+ 		}
+ 	}
+-	if m.GetType() == pb.MsgAppResp || m.GetType() == pb.MsgVoteResp || m.GetType() == pb.MsgPreVoteResp {
++	if m.GetType() == pb.MsgAppResp || m.GetType() == pb.MsgVoteResp || m.GetType() == pb.MsgPreVoteResp ||
++		// A request for votes says which term its sender is in and where its
++		// log ends. Both must be on disk before the request leaves: a candidate
++		// that is killed first comes back in the earlier term, with the shorter
++		// log, can ask again for the same term, and would be elected by votes
++		// given to the first request, for a log it no longer has.
++		m.GetType() == pb.MsgVote {
+ 		// If async storage writes are enabled, messages added to the msgs slice
+ 		// are allowed to be sent out before unstable state (e.g. log entry
+ 		// writes and election votes) have been durably synced to the local
